@@ -149,6 +149,7 @@ void WiFiManager::setupConfigPortal() {
   server->on(String(F("/wifisave")).c_str(), std::bind(&WiFiManager::handleWifiSave, this));
   server->on(String(F("/i")).c_str(), std::bind(&WiFiManager::handleInfo, this));
   server->on(String(F("/r")).c_str(), std::bind(&WiFiManager::handleReset, this));
+  server->on(String(F("/scan")).c_str(), std::bind(&WiFiManager::handleScan, this));
   //server->on("/generate_204", std::bind(&WiFiManager::handle204, this));  //Android/Chrome OS captive portal check.
   server->on(String(F("/fwlink")).c_str(), std::bind(&WiFiManager::handleRoot, this));  //Microsoft captive portal. Maybe not needed. Might be handled by notFound handler.
   server->onNotFound (std::bind(&WiFiManager::handleNotFound, this));
@@ -442,7 +443,25 @@ void WiFiManager::setMinimumSignalQuality(int quality) {
 void WiFiManager::setBreakAfterConfig(boolean shouldBreak) {
   _shouldBreakAfterConfig = shouldBreak;
 }
-
+void WiFiManager::reportStatus(String &page){
+  if (WiFi.SSID() != ""){
+	  page += F("Configured to connect to access point ");
+	  page += WiFi.SSID();
+	  if (WiFi.status()==WL_CONNECTED){
+		  page += F(" and <strong>currently connected</strong> on IP <a href=\"http://");
+		  page += WiFi.localIP().toString();
+		  page += F("/\">");
+		  page += WiFi.localIP().toString();
+		  page += F("</a>");
+	   }
+	  else {
+		  page += F(" but <strong>not currently connected</strong> to network.");
+	  }
+    }
+    else {
+		page += F("No network currently configured.");
+	}
+}
 /** Handle root or redirect to captive portal */
 void WiFiManager::handleRoot() {
   DEBUG_WM(F("Handle root"));
@@ -686,36 +705,72 @@ void WiFiManager::handleWifiSave() {
 /** Handle the info page */
 void WiFiManager::handleInfo() {
   DEBUG_WM(F("Info"));
-
+  server->sendHeader("Cache-Control", "no-cache, no-store, must-revalidate");
+  server->sendHeader("Pragma", "no-cache");
+  server->sendHeader("Expires", "-1");
   String page = FPSTR(HTTP_HEADER);
   page.replace("{v}", "Info");
-  page += FPSTR(HTTP_SCRIPT);
+page += FPSTR(HTTP_SCRIPT);
   page += FPSTR(HTTP_STYLE);
   page += _customHeadElement;
   page += FPSTR(HTTP_HEADER_END);
-  page += F("<dl>");
-  page += F("<dt>Chip ID</dt><dd>");
+  page += F("<h2>WiFi Information</h2>");
+  page += F("Android app from <a href=\"https://play.google.com/store/apps/details?id=au.com.umranium.espconnect\">https://play.google.com/store/apps/details?id=au.com.umranium.espconnect</a> provides easier ESP WiFi configuration.<p/>");
+  reportStatus(page);
+  page += F("<h3>Device Data</h3>");
+  page += F("<table class=\"table\">");
+  page += F("<thead><tr><th>Name</th><th>Value</th></tr></thead><tbody><tr><td>Chip ID</td><td>");
   page += ESP.getChipId();
-  page += F("</dd>");
-  page += F("<dt>Flash Chip ID</dt><dd>");
+  page += F("</td></tr>");
+  page += F("<tr><td>Flash Chip ID</td><td>");
   page += ESP.getFlashChipId();
-  page += F("</dd>");
-  page += F("<dt>IDE Flash Size</dt><dd>");
+  page += F("</td></tr>");
+  page += F("<tr><td>IDE Flash Size</td><td>");
   page += ESP.getFlashChipSize();
-  page += F(" bytes</dd>");
-  page += F("<dt>Real Flash Size</dt><dd>");
+  page += F(" bytes</td></tr>");
+  page += F("<tr><td>Real Flash Size</td><td>");
   page += ESP.getFlashChipRealSize();
-  page += F(" bytes</dd>");
-  page += F("<dt>Soft AP IP</dt><dd>");
+  page += F(" bytes</td></tr>");
+  page += F("<tr><td>Access Point IP</td><td>");
   page += WiFi.softAPIP().toString();
-  page += F("</dd>");
-  page += F("<dt>Soft AP MAC</dt><dd>");
+  page += F("</td></tr>");
+  page += F("<tr><td>Access Point MAC</td><td>");
   page += WiFi.softAPmacAddress();
-  page += F("</dd>");
-  page += F("<dt>Station MAC</dt><dd>");
+  page += F("</td></tr>");
+
+  page += F("<tr><td>SSID</td><td>");
+  page += WiFi.SSID();
+  page += F("</td></tr>");
+
+  page += F("<tr><td>Station IP</td><td>");
+  page += WiFi.localIP().toString();
+  page += F("</td></tr>");
+
+  page += F("<tr><td>Station MAC</td><td>");
   page += WiFi.macAddress();
-  page += F("</dd>");
-  page += F("</dl>");
+  page += F("</td></tr>");
+  page += F("</tbody></table>");
+
+  page += F("<h3>Available Pages</h3>");
+  page += F("<table class=\"table\">");
+  page += F("<thead><tr><th>Page</th><th>Function</th></tr></thead><tbody>");
+  page += F("<tr><td><a href=\"/\">/</a></td>");
+  page += F("<td>Menu page.</td></tr>");
+  page += F("<tr><td><a href=\"/wifi\">/wifi</a></td>");
+  page += F("<td>Show WiFi scan results and enter WiFi configuration.</td></tr>");
+  page += F("<tr><td><a href=\"/wifisave\">/wifisave\</a></td>");
+  page += F("<td>Save WiFi configuration information and configure device. Needs variables supplied.</td></tr>");
+  page += F("<tr><td><a href=\"/close\">/close</a></td>");
+  page += F("<td>Close the configuration server and configuration WiFi network.</td></tr>");
+  page += F("<tr><td><a href=\"/i\">/i</a></td>");
+  page += F("<td>This page.</td></tr>");
+  page += F("<tr><td><a href=\"/r\">/r</a></td>");
+  page += F("<td>Delete WiFi configuration and reboot. ESP device will not reconnect to a network until new WiFi configuration data is entered.</td></tr>");
+  page += F("<tr><td><a href=\"/state\">/state</a></td>");
+  page += F("<td>Current device state in JSON format. Interface for programmatic WiFi configuration.</td></tr>");
+  page += F("<tr><td><a href=\"/scan\">/scan</a></td>");
+  page += F("<td>Run a WiFi scan and return results in JSON format. Interface for programmatic WiFi configuration.</td></tr>");
+  page += F("</table>");
   page += FPSTR(HTTP_END);
 
   server->sendHeader("Content-Length", String(page.length()));
@@ -723,7 +778,47 @@ void WiFiManager::handleInfo() {
 
   DEBUG_WM(F("Sent info page"));
 }
+/** Handle the scan page */
+void WiFiManager::handleScan() {
+  DEBUG_WM(F("State - json"));
+  server->sendHeader("Cache-Control", "no-cache, no-store, must-revalidate");
+  server->sendHeader("Pragma", "no-cache");
+  server->sendHeader("Expires", "-1");
 
+  int n;
+  int *indices;
+  int **indicesptr = &indices;
+  //Space for indices array allocated on heap in scanWifiNetworks
+  //and should be freed when indices no longer required.
+  n = scanWifiNetworks(indicesptr);
+  DEBUG_WM(F("In handleScan, scanWifiNetworks done"));
+  String page = F("{\"Access_Points\":[");
+  //display networks in page
+  for (int i = 0; i < n; i++) {
+          if(indices[i] == -1) continue; // skip duplicates and those that are below the required quality
+          if(i != 0) page += F(", ");
+          DEBUG_WM(WiFi.SSID(indices[i]));
+          DEBUG_WM(WiFi.RSSI(indices[i]));
+          int quality = getRSSIasQuality(WiFi.RSSI(indices[i]));
+          String item = FPSTR(JSON_ITEM);
+          String rssiQ;
+          rssiQ += quality;
+          item.replace("{v}", WiFi.SSID(indices[i]));
+          item.replace("{r}", rssiQ);
+          if (WiFi.encryptionType(indices[i]) != ENC_TYPE_NONE) {
+            item.replace("{i}", "true");
+          } else {
+            item.replace("{i}", "false");
+          }
+          //DEBUG_WM(item);
+          page += item;
+          delay(0);
+  }
+  free(indices); //indices array no longer required so free memory
+  page += F("]}");
+  server->send(200, "application/json", page);
+  DEBUG_WM(F("Sent WiFi scan data ordered by signal strength in json format"));
+}
 /** Handle the reset page */
 void WiFiManager::handleReset() {
   DEBUG_WM(F("Reset"));
@@ -801,7 +896,60 @@ void WiFiManager::setCustomHeadElement(const char* element) {
 void WiFiManager::setRemoveDuplicateAPs(boolean removeDuplicates) {
   _removeDuplicateAPs = removeDuplicates;
 }
+//Scan for WiFiNetworks in range and sort by signal strength
+//space for indices array allocated on the heap and should be freed when no longer required
+int WiFiManager::scanWifiNetworks(int **indicesptr) {
+    int n = WiFi.scanNetworks();
+    DEBUG_WM(F("Scan done"));
+    if (n == 0) {
+      DEBUG_WM(F("No networks found"));
+      return(0);
+    } else {
+	  // Allocate space off the heap for indices array.
+	  // This space should be freed when no longer required.
+ 	  int* indices = (int *)malloc(n*sizeof(int));
+					if (indices == NULL){
+						DEBUG_WM(F("ERROR: Out of memory"));
+						return(0);
+						}
+	  *indicesptr = indices;
+      //sort networks
+      for (int i = 0; i < n; i++) {
+        indices[i] = i;
+      }
 
+      std::sort(indices, indices + n, [](const int & a, const int & b) -> bool
+      {
+        return WiFi.RSSI(a) > WiFi.RSSI(b);
+      });
+      // remove duplicates ( must be RSSI sorted )
+      if(_removeDuplicateAPs) {
+        String cssid;
+        for (int i = 0; i < n; i++) {
+          if(indices[i] == -1) continue;
+          cssid = WiFi.SSID(indices[i]);
+          for (int j = i + 1; j < n; j++) {
+            if(cssid == WiFi.SSID(indices[j])){
+              DEBUG_WM("DUP AP: " + WiFi.SSID(indices[j]));
+              indices[j] = -1; // set dup aps to index -1
+            }
+          }
+        }
+      }
+
+      for (int i = 0; i < n; i++) {
+        if(indices[i] == -1) continue; // skip dups
+
+        int quality = getRSSIasQuality(WiFi.RSSI(indices[i]));
+        if (!(_minimumQuality == -1 || _minimumQuality < quality)) {
+          indices[i] == -1;
+          DEBUG_WM(F("Skipping due to quality"));
+        }
+      }
+
+      return (n);
+    }
+}
 
 
 template <typename Generic>
